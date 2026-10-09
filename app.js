@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=2';
-import { QUESTIONS, THEMES } from './questions.js?v=2';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=3';
+import { QUESTIONS, THEMES } from './questions.js?v=3';
 
 const $app = document.getElementById('app');
 const C = { bg: '#121019', panel: '#1D1A29', ink: '#F5F3FA', yellow: '#FFD23F', blue: '#5B8CFF', orange: '#FF8A3D', light: '#F5F3FA' };
@@ -84,11 +84,17 @@ function viewHome() {
   <section class="hero" aria-labelledby="qdj">
     <div class="row"><span class="kicker">Question du jour</span><span class="chip">${esc(q.theme)}</span></div>
     <p class="big-q" id="qdj">${esc(q.q)}</p>
-    <a class="btn btn-dark" href="#/nouveau/${qi}">Lancer ce débat ${ICON.arrow}</a>
+    <a class="btn btn-dark" href="#/nouveau/${qi}">${q.a ? 'Lancer ce débat' : 'Poser cette question'} ${ICON.arrow}</a>
   </section>
   <h2>Choisir par thème</h2>
-  <div class="grid2">${THEMES.map((t) => `<a class="tile" href="#/questions/${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>
-  <p style="margin-top:12px"><a class="btn btn-ghost" href="#/nouveau">Écrire ma propre question</a></p>
+  <div class="grid2">${THEMES.filter((t) => t !== 'Libre').map((t) => `<a class="tile" href="#/questions/${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>
+  <a class="panel" href="#/questions/Libre" style="margin-top:10px;flex-direction:row;align-items:center;justify-content:space-between;min-height:64px">
+    <span><span style="display:block;font-weight:700;font-size:16px">Questions libres</span><span class="small muted">Pas de camps : chacun répond ce qu’il veut</span></span>
+    <span style="color:var(--yellow)">${ICON.arrow}</span></a>
+  <div class="grid2" style="margin-top:12px">
+    <a class="btn btn-ghost" href="#/nouveau">Écrire un débat</a>
+    <a class="btn btn-ghost" href="#/nouveau/libre">Question libre</a>
+  </div>
   ${mine.length ? `<h2>Mes débats</h2><div class="stack">${mine.map((m) => `
     <a class="panel" href="#/g/${esc(m.id)}/${esc(m.token)}"><span class="q">${esc(m.question)}</span>
     <span class="meta"><span>${new Date(m.at).toLocaleDateString('fr-FR')}</span><span style="color:var(--yellow);font-weight:700">Voir les réponses</span></span></a>`).join('')}</div>` : ''}
@@ -103,19 +109,26 @@ function viewBank(theme) {
     `<a class="pill ${t === theme ? 'on' : ''}" style="display:inline-flex;align-items:center" href="#/questions/${encodeURIComponent(t)}" ${t === theme ? 'aria-current="true"' : ''}>${esc(t)}</a>`).join('')}</div>
   <div class="stack" style="margin-top:18px">${list.map((q) => `
     <a class="panel" href="#/nouveau/${q.i}"><span class="q">${esc(q.q)}</span>
-    <span class="meta"><span>${esc(q.theme)} · ${esc(q.a)} / ${esc(q.b)}</span><span style="color:var(--yellow);font-weight:700">Choisir</span></span></a>`).join('')}</div>
-  <p style="margin-top:16px"><a class="btn btn-ghost" href="#/nouveau">Écrire ma propre question</a></p>`;
+    <span class="meta"><span>${q.a ? `${esc(q.theme)} · ${esc(q.a)} / ${esc(q.b)}` : 'Question libre · réponse ouverte'}</span><span style="color:var(--yellow);font-weight:700">Choisir</span></span></a>`).join('')}</div>
+  <p style="margin-top:16px"><a class="btn btn-ghost" href="#/nouveau${theme === 'Libre' ? '/libre' : ''}">Écrire ma propre question</a></p>`;
 }
 
 /* ---------- Création ---------- */
 function viewCreate(idx) {
-  const preset = idx !== undefined && idx !== '' ? QUESTIONS[Number(idx)] : null;
+  const preset = idx !== undefined && idx !== '' && idx !== 'libre' ? QUESTIONS[Number(idx)] : null;
+  let mode = idx === 'libre' || (preset && !preset.a) ? 'open' : 'debate';
   const author = store.get('author', '');
-  $app.innerHTML = `${topBack('Ton débat', preset ? `#/questions/${encodeURIComponent(preset.theme)}` : '#/')}
+  $app.innerHTML = `${topBack('Ta question', preset ? `#/questions/${encodeURIComponent(preset.theme)}` : '#/')}
   <form id="f" class="stack" style="gap:18px;margin-top:8px" novalidate>
+    <div class="field"><span class="small muted" style="font-weight:700;text-transform:uppercase;letter-spacing:1px">Format</span>
+      <div class="grid2" role="group" aria-label="Format">
+        <button type="button" class="pill" data-mode="debate">Débat · 2 camps</button>
+        <button type="button" class="pill" data-mode="open">Question libre</button>
+      </div>
+      <div class="small muted" id="modeHelp"></div></div>
     <div class="field"><label for="q">La question</label>
       <textarea id="q" maxlength="200" required placeholder="Ex. : l’argent fait-il le bonheur ?">${esc(preset?.q || '')}</textarea></div>
-    <div class="field"><span class="small muted" style="font-weight:700;text-transform:uppercase;letter-spacing:1px">Les deux camps</span>
+    <div class="field" id="sidesField"><span class="small muted" style="font-weight:700;text-transform:uppercase;letter-spacing:1px">Les deux camps</span>
       <div class="grid2">
         <input type="text" id="a" maxlength="30" aria-label="Camp 1" value="${esc(preset?.a || 'Oui')}" style="border-color:var(--blue)">
         <input type="text" id="b" maxlength="30" aria-label="Camp 2" value="${esc(preset?.b || 'Non')}" style="border-color:var(--orange)">
@@ -123,20 +136,34 @@ function viewCreate(idx) {
     <div class="field"><label for="n">Ton prénom ou pseudo</label>
       <input type="text" id="n" maxlength="40" required value="${esc(author)}" placeholder="Il apparaît sur la carte : « Débat lancé par … »"></div>
     <div id="err"></div>
-    <button class="btn btn-yellow" id="go" type="submit">Créer mon débat</button>
+    <button class="btn btn-yellow" id="go" type="submit">Créer</button>
   </form>`;
+  const setMode = (m) => {
+    mode = m;
+    $app.querySelectorAll('[data-mode]').forEach((b) => { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', String(b.dataset.mode === m)); });
+    document.getElementById('sidesField').hidden = m === 'open';
+    document.getElementById('modeHelp').textContent = m === 'open'
+      ? 'Tes contacts répondent directement, sans choisir de camp.'
+      : 'Tes contacts choisissent un camp, puis argumentent.';
+    document.getElementById('q').placeholder = m === 'open' ? 'Ex. : quel conseil donnerais-tu à tes 18 ans ?' : 'Ex. : l’argent fait-il le bonheur ?';
+  };
+  $app.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  setMode(mode);
   document.getElementById('f').addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = (id) => document.getElementById(id).value.trim();
     const q = v('q'), a = v('a'), b = v('b'), n = v('n');
     const err = document.getElementById('err');
     if (q.length < 5) return (err.innerHTML = `<div class="error">Écris une question d’au moins 5 caractères.</div>`);
-    if (!a || !b) return (err.innerHTML = `<div class="error">Donne un nom aux deux camps.</div>`);
+    if (mode === 'debate' && (!a || !b)) return (err.innerHTML = `<div class="error">Donne un nom aux deux camps.</div>`);
     if (!n) return (err.innerHTML = `<div class="error">Indique ton prénom ou un pseudo.</div>`);
     const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Création…';
     try {
-      const r = await rpc('palabre_create_debate', { p_question: q, p_side_a: a, p_side_b: b, p_author: n, p_theme: preset?.theme || null });
-      if (!r.ok) { err.innerHTML = `<div class="error">Ce texte contient un mot bloqué par le filtre. Reformule-le.</div>`; btn.disabled = false; btn.textContent = 'Créer mon débat'; return; }
+      const args = mode === 'open'
+        ? { p_question: q, p_author: n, p_theme: preset?.theme || null, p_mode: 'open' }
+        : { p_question: q, p_side_a: a, p_side_b: b, p_author: n, p_theme: preset?.theme || null };
+      const r = await rpc('palabre_create_debate', args);
+      if (!r.ok) { err.innerHTML = `<div class="error">Ce texte contient un mot bloqué par le filtre. Reformule-le.</div>`; btn.disabled = false; btn.textContent = 'Créer'; return; }
       store.set('author', n);
       const mine = store.get('mine', []);
       mine.unshift({ id: r.id, token: r.token, question: q, at: Date.now() });
@@ -144,7 +171,7 @@ function viewCreate(idx) {
       location.hash = `#/g/${r.id}/${r.token}`;
     } catch (ex) {
       err.innerHTML = `<div class="error">Impossible de créer le débat pour l’instant. Vérifie ta connexion et réessaie.</div>`;
-      btn.disabled = false; btn.textContent = 'Créer mon débat';
+      btn.disabled = false; btn.textContent = 'Créer';
     }
   });
 }
@@ -156,18 +183,21 @@ async function viewAnswer(id) {
   try { d = await rpc('palabre_get_debate', { p_id: id }); } catch { return fail('Impossible de charger ce débat. Vérifie ta connexion.'); }
   if (!d) return fail('Ce débat n’existe pas ou a été supprimé.');
   const answered = store.get('answered', {});
-  let side = null;
+  const open = d.mode === 'open';
+  let side = open ? 'O' : null;
 
   const header = `<div class="top"><a class="brand" href="#/">${ICON.logo()}<b>palabre</b></a></div>
     <div style="display:flex;align-items:center;gap:12px;margin:8px 0 18px">
       <div style="width:44px;height:44px;border-radius:22px;background:var(--yellow);color:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:18px">${esc(d.author.charAt(0).toUpperCase())}</div>
-      <div><div style="font-weight:700">${esc(d.author)} lance un débat</div><div class="small muted">Ta réponse reste 100 % anonyme</div></div></div>`;
+      <div><div style="font-weight:700">${esc(d.author)} ${open ? 'te pose une question' : 'lance un débat'}</div><div class="small muted">Ta réponse reste 100 % anonyme</div></div></div>`;
 
   const done = (data) => {
     $app.innerHTML = `${header}
       <div class="okmark">${ICON.check}</div>
       <p class="big-q" style="margin:20px 0">Envoyé. Personne ne saura que c’est toi.</p>
-      <div class="panel"><span class="small muted">Le score pour l’instant</span>${scoreBlock(data)}</div>
+      ${open
+        ? `<div class="panel"><span class="small muted">Réponses reçues pour l’instant</span><span style="font-family:var(--display);font-weight:800;font-size:40px;line-height:1">${data.count_o ?? ''}</span></div>`
+        : `<div class="panel"><span class="small muted">Le score pour l’instant</span>${scoreBlock(data)}</div>`}
       <p class="muted" style="font-size:15px;line-height:1.45">${esc(d.author)} repostera les meilleures réponses en statut. Garde un œil sur ses statuts.</p>
       <div class="stack" style="margin-top:20px">
         <a class="btn btn-yellow" href="#/">Lance ton propre débat</a>
@@ -178,15 +208,15 @@ async function viewAnswer(id) {
   $app.innerHTML = `${header}
     <p class="big-q">${esc(d.question)}</p>
     <form id="f" class="stack" style="gap:20px;margin-top:22px" novalidate>
-      <fieldset style="border:0;padding:0;margin:0" class="field">
+      ${open ? '' : `<fieldset style="border:0;padding:0;margin:0" class="field">
         <legend class="small muted" style="font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">1 · Ton camp</legend>
         <div class="sides">
           <button type="button" class="side a" data-s="A" aria-pressed="false">${esc(d.side_a)}</button>
           <button type="button" class="side b" data-s="B" aria-pressed="false">${esc(d.side_b)}</button>
         </div>
-      </fieldset>
-      <div class="field"><label for="t">2 · Ton argument</label>
-        <textarea id="t" maxlength="500" placeholder="Explique ton point de vue en quelques phrases…"></textarea>
+      </fieldset>`}
+      <div class="field"><label for="t">${open ? 'Ta réponse' : '2 · Ton argument'}</label>
+        <textarea id="t" maxlength="500" placeholder="${open ? 'Réponds librement, en un mot ou en plusieurs phrases…' : 'Explique ton point de vue en quelques phrases…'}"></textarea>
         <div class="count"><span id="cnt">0</span> / 500</div>
         <div class="small muted" style="display:flex;gap:6px;align-items:center">${ICON.shield} Insultes et attaques personnelles bloquées automatiquement</div>
       </div>
@@ -205,12 +235,13 @@ async function viewAnswer(id) {
     const err = document.getElementById('err');
     if (!side) return (err.innerHTML = `<div class="error">Choisis d’abord ton camp.</div>`);
     const body = ta.value.trim();
-    if (body.length < 3) return (err.innerHTML = `<div class="error">Écris au moins une phrase pour défendre ton camp.</div>`);
+    if (open && body.length < 2) return (err.innerHTML = `<div class="error">Écris ta réponse avant d’envoyer.</div>`);
+    if (!open && body.length < 3) return (err.innerHTML = `<div class="error">Écris au moins une phrase pour défendre ton camp.</div>`);
     const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = 'Envoi…';
     try {
       const r = await rpc('palabre_submit', { p_id: id, p_side: side, p_body: body });
       if (!r.ok) {
-        const msg = { insult: 'Ton message contient des insultes. Reformule-le poliment : un bon argument convainc mieux.', too_long: 'Ton message est trop long (500 caractères max).', full: 'Ce débat a reçu trop de réponses.', not_found: 'Ce débat n’existe plus.' }[r.reason] || 'Réponse refusée.';
+        const msg = { insult: 'Ton message contient des insultes. Reformule-le poliment : un bon argument convainc mieux.', too_long: 'Ton message est trop long (500 caractères max).', full: 'Ce débat a reçu trop de réponses.', empty: 'Écris ta réponse avant d’envoyer.', not_found: 'Ce débat n’existe plus.' }[r.reason] || 'Réponse refusée.';
         err.innerHTML = `<div class="error">${esc(msg)}</div>`; btn.disabled = false; btn.textContent = 'Envoyer anonymement'; return;
       }
       answered[id] = true; store.set('answered', answered);
@@ -235,20 +266,23 @@ async function viewOwner(id, token) {
   if (!mine.some((m) => m.id === id)) { mine.unshift({ id, token, question: d.question, at: Date.now() }); store.set('mine', mine.slice(0, 30)); }
 
   const st = { color: 0, selected: [] };
+  const open = d.mode === 'open';
+  const maxSel = open ? 3 : 2;
   const colors = [{ bg: C.yellow, ink: C.bg, label: 'Jaune' }, { bg: C.bg, ink: C.yellow, label: 'Nuit' }, { bg: C.light, ink: C.bg, label: 'Clair' }];
   const link = publicLink(id);
   const caption = `${d.question}\nRéponds anonymement ici : ${link}`;
 
   const counts = () => {
     const vis = d.responses.filter((r) => !r.hidden);
-    return { count_a: vis.filter((r) => r.side === 'A').length, count_b: vis.filter((r) => r.side === 'B').length };
+    return { count_a: vis.filter((r) => r.side === 'A').length, count_b: vis.filter((r) => r.side === 'B').length, count_o: vis.filter((r) => r.side === 'O').length };
   };
+  const totalOf = (c) => (open ? c.count_o : c.count_a + c.count_b);
 
   async function render() {
     const c = counts();
-    const total = c.count_a + c.count_b;
+    const total = totalOf(c);
     const withText = d.responses.filter((r) => r.body);
-    $app.innerHTML = `${topBack('Ton débat')}
+    $app.innerHTML = `${topBack(open ? 'Ta question' : 'Ton débat')}
       <p class="big-q" style="font-size:26px">${esc(d.question)}</p>
 
       <h2>1 · Poste ta question en statut</h2>
@@ -262,14 +296,18 @@ async function viewOwner(id, token) {
       <p class="small muted" style="line-height:1.45">Sur WhatsApp, le lien n’est pas cliquable sur une image : colle-le dans la légende du statut, ou poste-le en statut texte juste après.</p>
 
       <h2>2 · Réponses <span class="muted" style="font-weight:600">(${total})</span></h2>
-      <div class="panel">${scoreBlock({ ...d, ...c })}
+      <div class="panel">${open
+        ? `<span style="font-family:var(--display);font-weight:800;font-size:40px;line-height:1">${total}</span><span class="small muted">réponse(s) anonyme(s)</span>`
+        : scoreBlock({ ...d, ...c })}
         <div class="small muted" style="display:flex;justify-content:space-between"><span>${d.blocked} message(s) bloqué(s) par le filtre</span><button class="mini" id="refresh">Actualiser</button></div></div>
-      <p class="small muted">Touche « Choisir » sur 2 réponses au maximum pour ta carte verdict. « Masquer » retire une réponse du score et de la carte.</p>
+      <p class="small muted">Touche « Choisir » sur ${maxSel} réponses au maximum pour ta carte. « Masquer » retire une réponse du compte et de la carte.</p>
       <div class="stack" id="list">${withText.length ? withText.map((r) => {
         const sel = st.selected.includes(r.id);
-        const sideCls = r.side === 'A' ? 'a' : 'b';
+        const tag = r.side === 'O'
+          ? `<span class="tag" style="background:var(--yellow)">Anonyme</span>`
+          : `<span class="tag ${r.side === 'A' ? 'a' : 'b'}">${esc(r.side === 'A' ? d.side_a : d.side_b)}</span>`;
         return `<div class="panel resp ${sel ? 'sel' : ''} ${r.hidden ? 'hid' : ''}">
-          <div style="display:flex;justify-content:space-between;align-items:center"><span class="tag ${sideCls}">${esc(r.side === 'A' ? d.side_a : d.side_b)}</span>
+          <div style="display:flex;justify-content:space-between;align-items:center">${tag}
           <span class="small muted">${new Date(r.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
           <div class="resp-body">${esc(r.body)}</div>
           <div class="resp-actions">
@@ -278,7 +316,7 @@ async function viewOwner(id, token) {
           </div></div>`;
       }).join('') : `<div class="notice">Pas encore de réponse. Poste ta carte en statut et reviens dans quelques minutes.</div>`}</div>
 
-      <h2>3 · Reposte le verdict</h2>
+      <h2>3 · ${open ? 'Reposte les meilleures réponses' : 'Reposte le verdict'}</h2>
       <img class="preview" id="vprev" alt="Aperçu de la carte verdict">
       <div class="stack" style="margin-top:14px">
         <button class="btn btn-green" id="shareV" ${total ? '' : 'disabled'}>${ICON.share} Partager le verdict</button>
@@ -295,7 +333,7 @@ async function viewOwner(id, token) {
     $app.querySelectorAll('[data-sel]').forEach((b) => b.addEventListener('click', () => {
       const rid = Number(b.dataset.sel);
       if (st.selected.includes(rid)) st.selected = st.selected.filter((x) => x !== rid);
-      else { st.selected.push(rid); if (st.selected.length > 2) st.selected.shift(); }
+      else { st.selected.push(rid); if (st.selected.length > maxSel) st.selected.shift(); }
       render();
     }));
     $app.querySelectorAll('[data-hide]').forEach((b) => b.addEventListener('click', async () => {
@@ -315,7 +353,7 @@ async function viewOwner(id, token) {
     });
     document.getElementById('shareV').addEventListener('click', async () => {
       await copy(link);
-      shareCanvas(await drawVerdict(), `palabre-verdict-${id}.png`, `Le verdict : ${d.question}\nDonne ton avis : ${link}`, 'Lien copié : colle-le dans la légende.');
+      shareCanvas(await drawVerdict(), `palabre-verdict-${id}.png`, `${open ? 'Vos réponses' : 'Le verdict'} : ${d.question}\nDonne ton avis : ${link}`, 'Lien copié : colle-le dans la légende.');
     });
   }
 
@@ -329,19 +367,19 @@ async function viewOwner(id, token) {
     const { cv, ctx } = canvas();
     const { bg, ink } = colors[ci];
     ctx.fillStyle = bg; ctx.fillRect(0, 0, 1080, 1920);
-    header(ctx, ink, 'DÉBAT');
-    const fit = fitText(ctx, d.question, 900, 860, 128, 60, `800`, DISPLAY, 1.04);
+    header(ctx, ink, open ? 'QUESTION' : 'DÉBAT');
+    const fit = fitText(ctx, d.question, 900, open ? 1000 : 860, 128, 60, `800`, DISPLAY, 1.04);
     // Bloc (auteur + question + camps) centré verticalement entre l'en-tête et le pied.
-    const blockH = 110 + fit.lines.length * fit.size * 1.04 + 70 + 130;
+    const blockH = 110 + fit.lines.length * fit.size * 1.04 + (open ? 0 : 70 + 130);
     let y = Math.max(280, 260 + (1600 - 260 - blockH) / 2);
     ctx.fillStyle = ink; ctx.font = `600 44px ${BODY}`; ctx.textBaseline = 'top';
-    ctx.fillText(`Débat lancé par ${d.author}`, 90, y);
+    ctx.fillText(`${open ? 'Question posée' : 'Débat lancé'} par ${d.author}`, 90, y);
     y += 110;
     ctx.font = `800 ${fit.size}px ${DISPLAY}`; ctx.fillStyle = ink;
     fit.lines.forEach((l) => { ctx.fillText(l, 90, y); y += fit.size * 1.04; });
     y += 70;
     const w = (900 - 30) / 2;
-    [[d.side_a, C.blue], [d.side_b, C.orange]].forEach(([label, col], i) => {
+    (open ? [] : [[d.side_a, C.blue], [d.side_b, C.orange]]).forEach(([label, col], i) => {
       const x = 90 + i * (w + 30);
       ctx.fillStyle = col; rr(ctx, x, y, w, 130, 65); ctx.fill();
       ctx.fillStyle = C.bg; const f = fitText(ctx, label, w - 50, 70, 56, 30, '700', BODY, 1);
@@ -357,15 +395,19 @@ async function viewOwner(id, token) {
   async function drawVerdict() {
     await fontsReady();
     const { cv, ctx } = canvas();
-    const c = counts(); const total = c.count_a + c.count_b;
+    const c = counts(); const total = totalOf(c);
     const [pa, pb] = pct(c.count_a, c.count_b);
     ctx.fillStyle = C.light; ctx.fillRect(0, 0, 1080, 1920);
-    header(ctx, C.bg, `${total} AVIS ANONYMES`);
+    header(ctx, C.bg, open ? `${total} RÉPONSE${total > 1 ? 'S' : ''}` : `${total} AVIS ANONYMES`);
     let y = 300;
     const q = fitText(ctx, d.question, 900, 300, 80, 48, '800', DISPLAY, 1.06);
     ctx.fillStyle = C.bg; ctx.font = `800 ${q.size}px ${DISPLAY}`; ctx.textBaseline = 'top';
     q.lines.forEach((l) => { ctx.fillText(l, 90, y); y += q.size * 1.06; });
     y += 50;
+    if (open) {
+      ctx.font = `700 40px ${BODY}`; ctx.fillStyle = '#5A5470'; ctx.fillText('Vos réponses, en toute liberté :', 90, y);
+      y += 80;
+    } else {
     const aWins = pa >= pb;
     const big = aWins ? pa : pb, label = aWins ? d.side_a : d.side_b;
     ctx.fillStyle = aWins ? '#2F5BD3' : '#C2410C'; ctx.font = `800 200px ${DISPLAY}`;
@@ -380,9 +422,10 @@ async function viewOwner(id, token) {
     ctx.font = `700 38px ${BODY}`; ctx.fillStyle = '#2F5BD3'; ctx.fillText(`${d.side_a} ${pa} %`, 90, y);
     ctx.fillStyle = '#C2410C'; ctx.textAlign = 'right'; ctx.fillText(`${d.side_b} ${pb} %`, 990, y); ctx.textAlign = 'left';
     y += 50;
+    }
     const picks = st.selected.map((rid) => d.responses.find((r) => r.id === rid)).filter(Boolean);
     const avail = 1580 - y;
-    const maxH = picks.length === 2 ? avail / 2 - 30 : avail - 30;
+    const maxH = avail / Math.max(1, picks.length) - 30;
     // Même taille de texte pour toutes les citations : la plus petite qui convient à chacune.
     const qsize = Math.min(...picks.map((r) => fitText(ctx, `« ${r.body} »`, 820, maxH - 130, 46, 30, '500', BODY, 1.35).size), 46);
     picks.forEach((r) => {
@@ -391,9 +434,9 @@ async function viewOwner(id, token) {
       const h = 110 + lines.length * f.size * 1.35;
       ctx.fillStyle = '#FFFFFF'; rr(ctx, 90, y, 900, h, 36); ctx.fill();
       ctx.strokeStyle = '#E4E0EE'; ctx.lineWidth = 3; ctx.stroke();
-      const tagTxt = r.side === 'A' ? d.side_a : d.side_b;
+      const tagTxt = r.side === 'O' ? 'Anonyme' : r.side === 'A' ? d.side_a : d.side_b;
       ctx.font = `700 30px ${BODY}`; const tw = ctx.measureText(tagTxt).width + 40;
-      ctx.fillStyle = r.side === 'A' ? C.blue : C.orange; rr(ctx, 130, y + 34, tw, 48, 24); ctx.fill();
+      ctx.fillStyle = r.side === 'O' ? C.yellow : r.side === 'A' ? C.blue : C.orange; rr(ctx, 130, y + 34, tw, 48, 24); ctx.fill();
       ctx.fillStyle = C.bg; ctx.textBaseline = 'middle'; ctx.fillText(tagTxt, 150, y + 59);
       ctx.font = `500 ${f.size}px ${BODY}`; ctx.textBaseline = 'top';
       let ly = y + 104; lines.forEach((l) => { ctx.fillText(l, 130, ly); ly += f.size * 1.35; });

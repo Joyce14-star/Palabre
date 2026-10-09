@@ -1,5 +1,5 @@
 // Banque de questions — [question, camp A, camp B]
-export const THEMES = ['Couple', 'Argent', 'Famille', 'Société', 'Travail', 'Amitié', 'Kamer', 'Fun'];
+export const THEMES = ['Couple', 'Argent', 'Famille', 'Société', 'Travail', 'Amitié', 'Kamer', 'Fun', 'Libre'];
 
 const RAW = {
   Couple: [
@@ -134,8 +134,26 @@ const RAW = {
     ['Lire ou regarder des séries ?', 'Lire', 'Séries'],
     ['Faut-il répondre à un appel pendant un repas ?', 'Oui', 'Non'],
   ],
+  // Questions libres : pas de camps, réponse ouverte.
+  Libre: [
+    ['Quel conseil donnerais-tu à tes 18 ans ?'],
+    ['Quelle est la plus grande leçon que la vie t’a apprise ?'],
+    ['Qu’est-ce qui te rend vraiment heureux ou heureuse ?'],
+    ['Quel est ton plus grand rêve que tu n’as jamais dit à personne ?'],
+    ['Qu’est-ce que tu ne pardonnerais jamais en amitié ?'],
+    ['Décris-moi en trois mots.'],
+    ['Quelle question aimerais-tu me poser sans oser ?'],
+    ['Qu’est-ce que les gens ne comprennent pas sur toi ?'],
+    ['Si tu avais 1 million de FCFA demain, tu en ferais quoi ?'],
+    ['Quel est le meilleur conseil qu’un parent t’a donné ?'],
+    ['Qu’est-ce qui manque le plus au pays aujourd’hui ?'],
+    ['Quelle habitude a changé ta vie ?'],
+    ['Quel souvenir d’enfance te fait encore sourire ?'],
+    ['Qu’est-ce qui fait un vrai homme ou une vraie femme selon toi ?'],
+    ['Si tu pouvais changer une chose dans ta vie, ce serait quoi ?'],
+  ],
 };
 
 export const QUESTIONS = THEMES.flatMap((theme) =>
-  RAW[theme].map(([q, a, b]) => ({ q, a, b, theme }))
+  RAW[theme].map(([q, a = null, b = null]) => ({ q, a, b, theme }))
 );
