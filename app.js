@@ -1,5 +1,5 @@
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { QUESTIONS, THEMES } from './questions.js';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=2';
+import { QUESTIONS, THEMES } from './questions.js?v=2';
 
 const $app = document.getElementById('app');
 const C = { bg: '#121019', panel: '#1D1A29', ink: '#F5F3FA', yellow: '#FFD23F', blue: '#5B8CFF', orange: '#FF8A3D', light: '#F5F3FA' };
